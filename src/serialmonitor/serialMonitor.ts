@@ -7,6 +7,7 @@ import * as constants from "../common/constants";
 import { DeviceContext } from "../deviceContext";
 import * as Logger from "../logger/logger";
 import { SerialPortCtrl } from "./serialportctrl";
+import { SerialPseudoterminal } from "./serialPseudoterminal";
 
 export interface ISerialPortDetail {
     path: string;
@@ -18,6 +19,7 @@ export interface ISerialPortDetail {
 export class SerialMonitor implements vscode.Disposable {
 
     public static SERIAL_MONITOR: string = "Serial Monitor";
+    public static SERIAL_MONITOR_RW: string = "Serial Monitor (Read/Write)";
 
     public static DEFAULT_BAUD_RATE: number = 115200;
 
@@ -48,6 +50,12 @@ export class SerialMonitor implements vscode.Disposable {
 
     private _outputChannel: vscode.OutputChannel;
 
+    // -------------- IO TERMINAL -----------------
+
+    private _ioPseudoTerminal: SerialPseudoterminal;
+
+    private _ioChannel: vscode.Terminal;
+
     private constructor() {
         const dc = DeviceContext.getInstance();
         dc.onDidChange(() => {
@@ -67,6 +75,9 @@ export class SerialMonitor implements vscode.Disposable {
         } else {
             defaultBaudRate = SerialMonitor.DEFAULT_BAUD_RATE;
         }
+        this._ioPseudoTerminal = new SerialPseudoterminal();
+        this._ioChannel = vscode.window.createTerminal({name: SerialMonitor.SERIAL_MONITOR_RW, pty: this._ioPseudoTerminal});
+
         this._outputChannel = vscode.window.createOutputChannel(SerialMonitor.SERIAL_MONITOR);
         this._currentBaudRate = defaultBaudRate;
         this._portsStatusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, constants.statusBarPriority.PORT);
@@ -87,7 +98,7 @@ export class SerialMonitor implements vscode.Disposable {
         this.updatePortListStatus(null);
     }
     public get initialized(): boolean {
-        return !!this._outputChannel;
+        return !!this._outputChannel && !!this._ioChannel;
     }
 
     public dispose() {
@@ -151,7 +162,7 @@ export class SerialMonitor implements vscode.Disposable {
                 return;
             }
         } else {
-            this._serialPortCtrl = new SerialPortCtrl(this._currentPort, this._currentBaudRate, this._outputChannel);
+            this._serialPortCtrl = new SerialPortCtrl(this._currentPort, this._currentBaudRate, this._outputChannel, this._ioPseudoTerminal);
         }
 
         if (!this._serialPortCtrl.currentPort) {
@@ -162,6 +173,7 @@ export class SerialMonitor implements vscode.Disposable {
         try {
             await this._serialPortCtrl.open();
             this.updatePortStatus(true);
+            this._ioChannel.show();
         } catch (error) {
             Logger.notifyUserWarning("openSerialMonitorError", error,
                 `Failed to open serial port ${this._currentPort} due to error: + ${error.toString()}`);

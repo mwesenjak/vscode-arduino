@@ -15,6 +15,13 @@ Welcome to the Visual Studio Code extension for **Arduino** <sup>preview</sup> !
 * Command Palette (<kbd>F1</kbd>) integration of frequently used commands (e.g. Verify, Upload...)
 * Integrated Arduino Debugging <sup>New</sup>
 
+### SerialMonitor Read/Write
+
+This fork adds the SerialMonitor to the Terminal section (which has input support).  
+
+Currently, it flushes the input to the serial line, once a newline is encountered. The line ending is always `\r\n` for now - at least for now.  
+See `TODO.serialmonitor-rw.md` for further potential additions/improvements/... or add your own to the list!  
+
 ## Prerequisites
 The Arduino IDE is required. Please install it from the [download page](https://www.arduino.cc/en/main/software#download).
 - The supported Arduino IDE versions are `1.6.x` and later.

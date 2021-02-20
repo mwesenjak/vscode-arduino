@@ -4,6 +4,7 @@
 import * as os from "os";
 import { OutputChannel } from "vscode";
 import { VscodeSettings } from "../arduino/vscodeSettings";
+import { SerialPseudoterminal } from "./serialPseudoterminal";
 
 interface ISerialPortDetail {
   path: string;
@@ -35,7 +36,7 @@ export class SerialPortCtrl {
   private _currentBaudRate: number;
   private _currentSerialPort = null;
 
-  public constructor(port: string, baudRate: number, private _outputChannel: OutputChannel) {
+  public constructor(port: string, baudRate: number, private _outputChannel: OutputChannel, private _serialPseudoterminal: SerialPseudoterminal) {
     this._currentBaudRate = baudRate;
     this._currentPort = port;
   }
@@ -48,8 +49,20 @@ export class SerialPortCtrl {
     return this._currentPort;
   }
 
+  private appendLineBothTerminals(data: string) {
+    this._outputChannel.appendLine(data);
+    this._serialPseudoterminal.appendLine(data);
+  }
+  
+  private appendBothTerminals(data: string) {
+    this._outputChannel.append(data);
+    this._serialPseudoterminal.append(data);
+  }
+
   public open(): Promise<any> {
-    this._outputChannel.appendLine(`[Starting] Opening the serial port - ${this._currentPort}`);
+    // assign this instance to the io terminal
+    this._serialPseudoterminal.setSerialPortControl(this);
+    this.appendLineBothTerminals(`[Starting] Opening the serial port - ${this._currentPort}`);
     return new Promise((resolve, reject) => {
       if (this._currentSerialPort && this._currentSerialPort.isOpen) {
         this._currentSerialPort.close((err) => {
@@ -68,17 +81,17 @@ export class SerialPortCtrl {
         this._outputChannel.show();
         this._currentSerialPort.on("open", () => {
           if (VscodeSettings.getInstance().disableTestingOpen) {
-            this._outputChannel.appendLine("[Warning] Auto checking serial port open is disabled");
+            this.appendLineBothTerminals("[Warning] Auto checking serial port open is disabled");
             return resolve();
           }
 
           this._currentSerialPort.write("TestingOpen" + "\r\n", (err) => {
             // TODO: Fix this on the serial port lib: https://github.com/EmergingTechnologyAdvisors/node-serialport/issues/795
             if (err && !(err.message.indexOf("Writing to COM port (GetOverlappedResult): Unknown error code 121") >= 0)) {
-              this._outputChannel.appendLine(`[Error] Failed to open the serial port - ${this._currentPort}`);
+              this.appendLineBothTerminals(`[Error] Failed to open the serial port - ${this._currentPort}`);
               reject(err);
             } else {
-              this._outputChannel.appendLine(`[Info] Opened the serial port - ${this._currentPort}`);
+              this.appendLineBothTerminals(`[Info] Opened the serial port - ${this._currentPort}`);
               this._currentSerialPort.set(["dtr=true", "rts=true"], (err) => {
                 if (err) {
                   reject(err);
@@ -90,11 +103,11 @@ export class SerialPortCtrl {
         });
 
         this._currentSerialPort.on("data", (_event) => {
-          this._outputChannel.append(_event.toString());
+          this.appendBothTerminals(_event.toString());
         });
 
         this._currentSerialPort.on("error", (_error) => {
-          this._outputChannel.appendLine("[Error]" + _error.toString());
+          this.appendLineBothTerminals("[Error]" + _error.toString());
         });
       }
     });
@@ -108,6 +121,23 @@ export class SerialPortCtrl {
       }
 
       this._currentSerialPort.write(text + "\r\n", (error) => {
+        if (!error) {
+          resolve();
+        } else {
+          return reject(error);
+        }
+      });
+    });
+  }
+
+  public sendRaw(text: string): Promise<any> {
+    return new Promise((resolve, reject) => {
+      if (!text || !this._currentSerialPort || !this.isActive) {
+        resolve();
+        return;
+      }
+
+      this._currentSerialPort.write(text, (error) => {
         if (!error) {
           resolve();
         } else {
@@ -140,6 +170,7 @@ export class SerialPortCtrl {
   }
 
   public stop(): Promise<any> {
+    this._serialPseudoterminal.setSerialPortControl(null);
     return new Promise((resolve, reject) => {
       if (!this._currentSerialPort || !this.isActive) {
         resolve(false);
@@ -147,7 +178,7 @@ export class SerialPortCtrl {
       }
       this._currentSerialPort.close((err) => {
         if (this._outputChannel) {
-          this._outputChannel.appendLine(`[Done] Closed the serial port ${os.EOL}`);
+          this.appendLineBothTerminals(`[Done] Closed the serial port`);
         }
         this._currentSerialPort = null;
         if (err) {
